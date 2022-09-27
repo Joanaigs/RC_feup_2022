@@ -1,4 +1,4 @@
-# RC_3LEIC05G4 
+# RC_3LEIC05G4
 
 
 
@@ -15,14 +15,14 @@ Already a pro? Just edit this README.md and make it your own. Want to make it ea
 
 ```
 cd existing_repo
-git remote add origin https://git.fe.up.pt/up202006279/rc_3leic05g4.git
+git remote add origin https://git.fe.up.pt/fsi/fsi2223/alunos/rc_3leic05g4.git
 git branch -M main
 git push -uf origin main
 ```
 
 ## Integrate with your tools
 
-- [ ] [Set up project integrations](https://git.fe.up.pt/up202006279/rc_3leic05g4/-/settings/integrations)
+- [ ] [Set up project integrations](https://git.fe.up.pt/fsi/fsi2223/alunos/rc_3leic05g4/-/settings/integrations)
 
 ## Collaborate with your team
 
