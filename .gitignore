@@ -2,3 +2,7 @@ out/
 cmake-build-debug/
 .idea/
 *.exe
+bin/
+penguin-received.gif
+*.o
+*.out
