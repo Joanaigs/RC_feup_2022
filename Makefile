@@ -1,42 +1,49 @@
-INSTRUCTIONS FOR SERIAL PORT PROTOCOL
-=====================================
+# Makefile to build the project
+# NOTE: This file must not be changed.
 
-This folder contains the base code of the serial port protocol.
+# Parameters
+CC = gcc
+CFLAGS = -Wall
 
-Project Structure
------------------
+SRC = src/
+INCLUDE = include/
+BIN = bin/
+CABLE_DIR = cable/
 
-- bin/: Compiled binaries.
-- src/: Source code for the implementation of the link-layer and application layer protocols. Students should edit these files to implement the project.
-- include/: Header files of the link-layer and application layer protocols. These files must not be changed.
-- cable/: Virtual cable program to help test the serial port. This file must not be changed.
-- main.c: Main file. This file must not be changed.
-- Makefile: Makefile to build the project and run the application.
-- penguin.gif: Example file to be sent through the serial port.
+TX_SERIAL_PORT = /dev/ttyS10
+RX_SERIAL_PORT = /dev/ttyS11
 
-Instructions to Run the Project
--------------------------------
+TX_FILE = penguin.gif
+RX_FILE = penguin-received.gif
 
-1. Edit the source code in the src/ directory.
-2. Compile the application and the virtual cable program using the provided Makefile.
-3. Run the virtual cable program (either by running the executable manually or using the Makefile target):
-	$ ./bin/cable_app
-	$ make run_cable
+# Targets
+.PHONY: all
+all: $(BIN)/main $(BIN)/cable
 
-4. Test the protocol without cable disconnections and noise
-	4.1 Run the receiver (either by running the executable manually or using the Makefile target):
-		$ ./bin/main /dev/ttyS11 rx penguin-received.gif
-		$ make run_tx
+$(BIN)/main: main.c $(SRC)/*.c
+	$(CC) $(CFLAGS) -o $@ $^ -I$(INCLUDE)
 
-	4.2 Run the transmitter (either by running the executable manually or using the Makefile target):
-		$ ./bin/main /dev/ttyS10 tx penguin.gif
-		$ make run_rx
+$(BIN)/cable: $(CABLE_DIR)/cable.c
+	$(CC) $(CFLAGS) -o $@ $^
 
-	4.3 Check if the file received matches the file sent, using the diff Linux command or using the Makefile target:
-		$ diff -s penguin.gif penguin-received.gif
-		$ make check_files
+.PHONY: run_tx
+run_tx: $(BIN)/main
+	./$(BIN)/main $(TX_SERIAL_PORT) tx $(TX_FILE)
 
-5. Test the protocol with cable disconnections and noise
-	5.1. Run receiver and transmitter again
-	5.2. Quickly move to the cable program console and press 0 for unplugging the cable, 2 to add noise, and 1 to normal
-	5.3. Check if the file received matches the file sent, even with cable disconnections or with noise
+.PHONY: run_rx
+run_rx: $(BIN)/main
+	./$(BIN)/main $(RX_SERIAL_PORT) rx $(RX_FILE)
+
+.PHONY: run_cable
+run_cable: $(BIN)/cable
+	./$(BIN)/cable
+
+.PHONY: check_files
+check_files:
+	diff -s $(TX_FILE) $(RX_FILE) || exit 0
+
+.PHONY: clean
+clean:
+	rm -f $(BIN)/main
+	rm -f $(BIN)/cable
+	rm -f $(RX_FILE)

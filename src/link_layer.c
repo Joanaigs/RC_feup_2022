@@ -11,7 +11,7 @@
 
 // MISC
 #define BUF_SIZE 256
-#define FLAG 0x7e
+#define FLAG 0x7E
 #define CSET 0x03
 #define CUA 0x07
 #define A 0x03
@@ -27,8 +27,7 @@ typedef enum
     FLAG_RCV,
     A_RCV,
     C_RCV,
-    BCC_OK,
-    STOP
+    BCC_OK
 } StateEnum;
 
 volatile int STOP = FALSE;
@@ -62,16 +61,16 @@ int llopen(LinkLayer connectionParameters)
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received[0]
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
 
     // Now clean the line and activate the settings for the port
     // tcflush() discards data written to the object referred to
-    // by fd but not transmitted, or data received but not read,
+    // by fd but not transmitted, or data received[0] but not read,
     // depending on the value of queue_selector:
-    //   TCIFLUSH - flushes data received but not read.
+    //   TCIFLUSH - flushes data received[0] but not read.
     tcflush(fd, TCIOFLUSH);
 
     // Set new port settings
@@ -81,78 +80,79 @@ int llopen(LinkLayer connectionParameters)
         exit(-1);
     }
 
-    printf("New termios structure set\n");
-
+    printf("New termios structure sett\n");
     if(connectionParameters.role==LlTx){
-        unsigned char set[5]={FLAG,A,CSET,BCC1,FLAG};
-        int bytes = write(fd, set, 5);
+        unsigned char set[]={FLAG,A,CSET,(A^CSET),FLAG};
+        //int received = write(fd, set, 5);
+        write(fd, set, 5);
     }
     else if(connectionParameters.role==LlRx){
         unsigned char set[5]={0};
         StateEnum state = START;
-        bool running =true;
+        int running = 1;
         while (running)
         {
-            unsigned char received;
+            unsigned char received[1];
             int bytes = read(fd, received, 1);
-            printf("var=0x%02X\n", (unsigned int)(bytes & 0xFF));
+            if(bytes==-1){
+                printf("error\n");
+                continue;
+            }
+            printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
             switch(state){
                 case START:
-                    if(received != FLAG)
-                        continue;
-                    else{
-                        set[0]=received;
-                        state=FLAG_RCV
+                    if(received[0] == FLAG){
+                        set[0]=received[0];
+                        state=FLAG_RCV;
                     }
                     break;
                 case FLAG_RCV:
-                    if(received == FLAG)
+                    if(received[0] == FLAG)
                         continue;
-                    else if (received != A_RCV ){
+                    else if (received[0] != A ){
                         state = START;
                     }
                     else{
-                        set[1]=received;
-                        state=A_RCV
+                        set[1]=received[0];
+                        state=A_RCV;
                     }
                     break;
                 case A_RCV:
-                    if(received == FLAG){
+                    if(received[0] == FLAG){
                         state=FLAG_RCV;
-                        set[0]=received
+                        set[0]=received[0];
                     }   
-                    else if (received != 1 ){
+                    else if (received[0] != CSET ){
                         state = START;
                     }
                     else{
-                        set[2]=received;
-                        state=C_RCV
+                        set[2]=received[0];
+                        state=C_RCV;
                     }
                     break;
                 case C_RCV:
-                    if (received != set[1]^set[2] ){
+                    if (received[0] != (set[1]^set[2]) ){
                         state = START;
                     }
                     else{
-                        set[3]=received;
+                        set[3]=received[0];
                         state = BCC_OK;
                     }
                     break;
                 case BCC_OK:
-                    if(received != FLAG){
+                    if(received[0] != FLAG){
                         state = START;
                     }
                     else{
-                        set[4]=received;
-                        state=STOP
+                        set[4]=received[0];
+                        running=0;
                     }
-                    break;
-                case STOP:
-                    running = false;
                     break;
             }
         }
         printf("done\n");
+        //nsigned char ua[]={FLAG,A,CUA,(A^CUA),FLAG};
+        //write(fd, ua, 5);
     }
     return fd;
 }

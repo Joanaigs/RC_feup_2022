@@ -12,7 +12,7 @@ typedef enum
 
 typedef struct
 {
-    char *serialPort;
+    const char *serialPort;
     LinkLayerRole role;
     int baudRate;
     int nRetransmissions;
