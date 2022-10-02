@@ -7,9 +7,12 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <signal.h>
 #include "link_layer.h"
 
-// MISC
+#define FALSE 0
+#define TRUE 1
+
 #define BUF_SIZE 256
 #define FLAG 0x7E
 #define CSET 0x03
@@ -31,9 +34,22 @@ typedef enum
 } StateEnum;
 
 volatile int STOP = FALSE;
+int alarmEnabled = FALSE;
+int alarmCount = 0;
+int fd;
+
+void alarmHandler(int signal)
+{
+    alarmEnabled = FALSE;
+    alarmCount++;
+    unsigned char set[]={FLAG,A,CSET,(A^CSET),FLAG};
+    write(fd, set, 5);
+    printf("Alarm #%d\n", alarmCount);
+}
+
 int llopen(LinkLayer connectionParameters)
 {
-    int fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
+    fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
 
     if (fd < 0)
     {
@@ -85,6 +101,79 @@ int llopen(LinkLayer connectionParameters)
         unsigned char set[]={FLAG,A,CSET,(A^CSET),FLAG};
         //int received = write(fd, set, 5);
         write(fd, set, 5);
+        int done = FALSE;
+        (void)signal(SIGALRM, alarmHandler);
+        unsigned char ua[5]={0};
+        StateEnum state = START;
+        while (alarmCount < 4 && !done)
+        {
+            if (alarmEnabled == FALSE)
+            {
+                alarm(3); // Set alarm to be triggered in 3s
+                alarmEnabled = TRUE;
+            }
+            unsigned char received[1];
+            int bytes = read(fd, received, 1);
+            if(bytes==-1){
+                printf("error\n");
+                continue;
+            }
+            printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+            switch(state){
+                case START:
+                    if(received[0] == FLAG){
+                        ua[0]=received[0];
+                        state=FLAG_RCV;
+                    }
+                    break;
+                case FLAG_RCV:
+                    if(received[0] == FLAG)
+                        continue;
+                    else if (received[0] != A ){
+                        state = START;
+                    }
+                    else{
+                        ua[1]=received[0];
+                        state=A_RCV;
+                    }
+                    break;
+                case A_RCV:
+                    if(received[0] == FLAG){
+                        state=FLAG_RCV;
+                        ua[0]=received[0];
+                    }
+                    else if (received[0] != CUA ){
+                        state = START;
+                    }
+                    else{
+                        ua[2]=received[0];
+                        state=C_RCV;
+                    }
+                    break;
+                case C_RCV:
+                    if (received[0] != (ua[1]^ua[2]) ){
+                        state = START;
+                    }
+                    else{
+                        ua[3]=received[0];
+                        state = BCC_OK;
+                    }
+                    break;
+                case BCC_OK:
+                    if(received[0] != FLAG){
+                        state = START;
+                    }
+                    else{
+                        ua[4]=received[0];
+                        alarm(0);
+                        done=TRUE;
+                    }
+                    break;
+            }
+
+        }
+
+        printf("Ending program\n");
     }
     else if(connectionParameters.role==LlRx){
         unsigned char set[5]={0};
@@ -151,8 +240,8 @@ int llopen(LinkLayer connectionParameters)
             }
         }
         printf("done\n");
-        //nsigned char ua[]={FLAG,A,CUA,(A^CUA),FLAG};
-        //write(fd, ua, 5);
+        unsigned char ua[]={FLAG,A,CUA,(A^CUA),FLAG};
+        write(fd, ua, 5);
     }
     return fd;
 }
