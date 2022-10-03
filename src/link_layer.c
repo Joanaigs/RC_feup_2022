@@ -45,6 +45,7 @@ void alarmHandler(int signal)
     unsigned char set[]={FLAG,A,CSET,(A^CSET),FLAG};
     write(fd, set, 5);
     printf("Alarm #%d\n", alarmCount);
+    printf("enable: %d\n", alarmEnabled);
 }
 
 int llopen(LinkLayer connectionParameters)
@@ -76,8 +77,8 @@ int llopen(LinkLayer connectionParameters)
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received[0]
+    newtio.c_cc[VTIME] = 0.1; // Inter-character timer unused
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received[0]
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -118,7 +119,10 @@ int llopen(LinkLayer connectionParameters)
                 printf("error\n");
                 continue;
             }
+            if(bytes==0)
+                continue; 
             printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+
             switch(state){
                 case START:
                     if(received[0] == FLAG){
@@ -132,7 +136,7 @@ int llopen(LinkLayer connectionParameters)
                     else if (received[0] != A ){
                         state = START;
                     }
-                    else{
+                    else{ 
                         ua[1]=received[0];
                         state=A_RCV;
                     }
@@ -165,14 +169,13 @@ int llopen(LinkLayer connectionParameters)
                     }
                     else{
                         ua[4]=received[0];
-                        alarm(0);
                         done=TRUE;
                     }
                     break;
             }
 
         }
-
+        alarm(0);
         printf("Ending program\n");
     }
     else if(connectionParameters.role==LlRx){
