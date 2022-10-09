@@ -17,6 +17,7 @@
 #define FLAG 0x7E
 #define CSET 0x03
 #define CUA 0x07
+#define CRR 0x05
 #define A 0x03
 #define BCC1 A^CSET
 #define BCC2 A^CUA
@@ -30,7 +31,8 @@ typedef enum
     FLAG_RCV,
     A_RCV,
     C_RCV,
-    BCC_OK
+    BCC_OK,
+    DATA
 } StateEnum;
 
 volatile int STOP = FALSE;
@@ -254,7 +256,109 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    // TODO
+    int done = FALSE;
+    (void)signal(SIGALRM, alarmHandler);
+    StateEnum state = START;
+    int aux=0;
+    while (alarmCount < 4 && !done)
+    {
+        // write info
+        unsigned char i[BUF_SIZE+1]={0};
+        i[0]= FLAG;
+        i[1] = A;
+        i[2] = CSET;
+        i[3] = A ^ CSET;
+
+        if(bufSize<250){
+            int j=0;
+            for(; j<bufSize; j++){
+                i[j+4]=buf[j+aux];
+            }
+            i[j+1]= FLAG;
+            i[j+2]= A ^ CSET;
+        }
+        else {
+            for (int j = 0; j < 250; j++) {
+                i[j + 4] = buf[j+aux];
+            }
+            i[BUF_SIZE]= FLAG;
+            i[BUF_SIZE-1]= A ^ CSET;;
+        }
+        
+        write(fd, i, BUF_SIZE);
+
+        //read
+        if (alarmEnabled == FALSE)
+        {
+            alarm(3); // Set alarm to be triggered in 3s
+            alarmEnabled = TRUE;
+        }
+        unsigned char received[1];
+        int bytes = read(fd, received, 1);
+        if(bytes==-1){
+            printf("error\n");
+            continue;
+        }
+        printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+        unsigned char ack[5]={0};
+        switch(state){
+            case START:
+                if(received[0] == FLAG){
+                    ack[0]=received[0];
+                    state=FLAG_RCV;
+                }
+                break;
+            case FLAG_RCV:
+                if(received[0] == FLAG)
+                    continue;
+                else if (received[0] != A ){
+                    state = START;
+                }
+                else{
+                    ack[1]=received[0];
+                    state=A_RCV;
+                }
+                break;
+            case A_RCV:
+                if(received[0] == FLAG){
+                    state=FLAG_RCV;
+                    ack[0]=received[0];
+                }
+                else if (received[0] != CRR){
+                    state = START;
+                }
+                else{
+                    ack[2]=received[0];
+                    state=C_RCV;
+                }
+                break;
+            case C_RCV:
+                if (received[0] != (ack[1]^ack[2]) ){
+                    state = START;
+                }
+                else{
+                    ack[3]=received[0];
+                    state = BCC_OK;
+                }
+                break;
+            case BCC_OK:
+                if(received[0] != FLAG){
+                    state = START;
+                }
+                else{
+                    ack[4]=received[0];
+                    alarm(0);
+                    if(aux>=bufSize)
+                        done=TRUE;
+                    aux+=250;
+
+                }
+                break;
+        }
+
+    }
+
+    printf("Ending program\n");
 
     return 0;
 }
@@ -264,9 +368,92 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    // TODO
+    unsigned char i[BUF_SIZE+1]={0};
+    StateEnum state = START;
+    int running = 1;
+    while (running)
+    {
+        unsigned char received[1];
+        int bytes = read(fd, received, 1);
+        if(bytes==-1){
+            printf("error\n");
+            continue;
+        }
+        printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+        switch(state){
+            case START:
+                if(received[0] == FLAG){
+                    i[0]=received[0];
+                    state=FLAG_RCV;
+                }
+                break;
+            case FLAG_RCV:
+                if(received[0] == FLAG)
+                    continue;
+                else if (received[0] != A ){
+                    state = START;
+                }
+                else{
+                    i[1]=received[0];
+                    state=A_RCV;
+                }
+                break;
+            case A_RCV:
+                if(received[0] == FLAG){
+                    state=FLAG_RCV;
+                    i[0]=received[0];
+                }   
+                else if (received[0] != CSET ){
+                    state = START;
+                }
+                else{
+                    i[2]=received[0];
+                    state=C_RCV;
+                }
+                break;
+            case C_RCV:
+                if (received[0] != (i[1]^i[2]) ){
+                    state = START;
+                }
+                else{
+                    i[3]=received[0];
+                    state = BCC_OK;
+                }
+                break;
+            case BCC_OK:
+                unsigned char buf[BUF_SIZE + 1] = {0};
+                while (STOP == FALSE)
+                {
 
-    return 0;
+                    // Returns after 5 chars have been input
+                    int bytes = read(fd, buf, BUF_SIZE);
+                    buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
+
+                    if (strlen(buf) != 0){
+                        printf(":%s:%d\n", buf, bytes);
+                    }
+                    
+                    if (buf[0] == i[1]^i[2])
+                        STOP = TRUE;
+                }
+
+                if (buf[0] != (i[1]^i[2]) ){
+                        state = START;
+                    }
+                    else{
+                        i[3]=received[0];
+                        state = BCC_OK;
+                    }
+
+
+                break;
+
+        }
+    }
+    printf("done\n");
+    unsigned char ua[]={FLAG,A,CUA,(A^CUA),FLAG};
+    write(fd, ua, 5);
+    return fd;
 }
 
 ////////////////////////////////////////////////
