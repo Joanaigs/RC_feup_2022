@@ -19,6 +19,7 @@
 #define CUA 0x07
 #define CRR 0x05
 #define A 0x03
+#define ESC 0x7D
 #define BCC1 A^CSET
 #define BCC2 A^CUA
 ////////////////////////////////////////////////
@@ -44,11 +45,10 @@ void alarmHandler(int signal)
 {
     alarmEnabled = FALSE;
     alarmCount++;
-    unsigned char set[]={FLAG,A,CSET,(A^CSET),FLAG};
-    write(fd, set, 5);
     printf("Alarm #%d\n", alarmCount);
     printf("enable: %d\n", alarmEnabled);
 }
+
 
 int llopen(LinkLayer connectionParameters)
 {
@@ -112,6 +112,8 @@ int llopen(LinkLayer connectionParameters)
         {
             if (alarmEnabled == FALSE)
             {
+                unsigned char set[]={FLAG,A,CSET,(A^CSET),FLAG};
+                write(fd, set, 5);
                 alarm(3); // Set alarm to be triggered in 3s
                 alarmEnabled = TRUE;
             }
@@ -259,37 +261,65 @@ int llwrite(const unsigned char *buf, int bufSize)
     int done = FALSE;
     (void)signal(SIGALRM, alarmHandler);
     StateEnum state = START;
-    int aux=0;
+
+    unsigned int count = 0;
+
+    
+
+    for (int k = 0; k < bufSize; k++){
+        if(buf[k]==FLAG || buf[k] == ESC){
+           count += 1;
+        }
+    }
+
+    unsigned int size = bufSize + 6 + count;
+    unsigned char i[size];
+    for(int k=0; k<size; k++){
+        i[k]=0;
+    }
     while (alarmCount < 4 && !done)
     {
-        // write info
-        unsigned char i[BUF_SIZE+1]={0};
+
+       // write info;
         i[0]= FLAG;
         i[1] = A;
         i[2] = CSET;
         i[3] = A ^ CSET;
+        unsigned int bcc2 = 0, k = 0;
+        for (int j = 0; j < bufSize; j++) {
+            if(buf[j]==FLAG){
+                i[j+4+k]=ESC;
+                i[j+5 +k]= 0x5E;
+                bcc2 ^= ESC;
+                bcc2 ^= 0x5E;
+                k++;
 
-        if(bufSize<250){
-            int j=0;
-            for(; j<bufSize; j++){
-                i[j+4]=buf[j+aux];
             }
-            i[j+1]= FLAG;
-            i[j+2]= A ^ CSET;
-        }
-        else {
-            for (int j = 0; j < 250; j++) {
-                i[j + 4] = buf[j+aux];
+            else if (buf[j] == ESC){
+                i[j+4+k] = ESC;
+                i [j+5+k] = 0x5D;
+                bcc2 ^= ESC;
+                bcc2 ^= 0x5D;
+                k++;
+
             }
-            i[BUF_SIZE]= FLAG;
-            i[BUF_SIZE-1]= A ^ CSET;;
+            else{
+                i[j + 4+k] = buf[j];
+                bcc2 ^= buf[j];
+            }
+            
         }
+        i[size-1]= FLAG;
+        i[size-2]= bcc2;
+
         
-        write(fd, i, BUF_SIZE);
+        write(fd, i, size);
 
-        //read
+        //READ
+
         if (alarmEnabled == FALSE)
         {
+            write(fd, i, size);
             alarm(3); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
         }
@@ -348,10 +378,7 @@ int llwrite(const unsigned char *buf, int bufSize)
                 else{
                     ack[4]=received[0];
                     alarm(0);
-                    if(aux>=bufSize)
-                        done=TRUE;
-                    aux+=250;
-
+                    done=TRUE;
                 }
                 break;
         }
@@ -368,22 +395,28 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    unsigned char i[BUF_SIZE+1]={0};
+    unsigned char fh[6]={0};
     StateEnum state = START;
-    int running = 1;
+    int running = TRUE;
+    int esc_activated = FALSE;
+    char data[MAX_PAYLOAD_SIZE] = {0};
+    int data_size = 0;
+    unsigned char bcc2 = 0;
     while (running)
     {
+        //Verifies if everything is okay with byte received
         unsigned char received[1];
-        int bytes = read(fd, received, 1);
-        if(bytes==-1){
+        int byte = read(fd, received, 1);
+        if(byte==-1){
             printf("error\n");
             continue;
         }
-        printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+        printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF)); // print do que recebe
+
         switch(state){
             case START:
                 if(received[0] == FLAG){
-                    i[0]=received[0];
+                    fh[0]=received[0];
                     state=FLAG_RCV;
                 }
                 break;
@@ -394,61 +427,80 @@ int llread(unsigned char *packet)
                     state = START;
                 }
                 else{
-                    i[1]=received[0];
+                    fh[1]=received[0];
                     state=A_RCV;
                 }
                 break;
             case A_RCV:
                 if(received[0] == FLAG){
                     state=FLAG_RCV;
-                    i[0]=received[0];
+                    fh[0]=received[0];
                 }   
                 else if (received[0] != CSET ){
                     state = START;
                 }
                 else{
-                    i[2]=received[0];
+                    fh[2]=received[0];
                     state=C_RCV;
                 }
                 break;
             case C_RCV:
-                if (received[0] != (i[1]^i[2]) ){
+                if(received[0] == FLAG){
+                    state=FLAG_RCV;
+                    fh[0]=received[0];
+                }
+                else if (received[0] != (fh[1]^fh[2]) ){
                     state = START;
                 }
                 else{
-                    i[3]=received[0];
+                    fh[3]=received[0];
                     state = BCC_OK;
                 }
                 break;
             case BCC_OK:
-                unsigned char buf[BUF_SIZE + 1] = {0};
-                while (STOP == FALSE)
-                {
 
-                    // Returns after 5 chars have been input
-                    int bytes = read(fd, buf, BUF_SIZE);
-                    buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
-
-                    if (strlen(buf) != 0){
-                        printf(":%s:%d\n", buf, bytes);
-                    }
+                if(received[0] == FLAG){
                     
-                    if (buf[0] == i[1]^i[2])
-                        STOP = TRUE;
+                    if (data[data_size - 1] == bcc2){
+                        data[data_size - 1] = 0;
+                        data_size--;
+                        running = FALSE;
+                    }else{
+                        // mandar um NACK()
+                    }
+                   
                 }
+                else{
 
-                if (buf[0] != (i[1]^i[2]) ){
-                        state = START;
+                    if (received[0] == ESC){
+                        esc_activated = TRUE;
+                        bcc2 ^= ESC;
+                    }    
+                    if (esc_activated){
+                        if (received[0] == 0x5E){
+                            data[data_size] = FLAG;
+                            data_size++;
+                            bcc2 ^= 0x5E;
+                        }
+                        if (received[0] == 0x5D){
+                            data[data_size] = ESC;
+                            data_size ++;
+                            bcc2 ^= 0x5D;
+                        }
                     }
                     else{
-                        i[3]=received[0];
-                        state = BCC_OK;
+                        data[data_size] = received[0];
+                        data_size ++;
+                        bcc2 ^= received[0];
                     }
 
+                }
 
                 break;
 
         }
+
+
     }
     printf("done\n");
     unsigned char ua[]={FLAG,A,CUA,(A^CUA),FLAG};
