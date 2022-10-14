@@ -310,7 +310,6 @@ int llwrite(const unsigned char *buf, int bufSize)
     while (alarmCount < 4 && !done)
     {
 
-        //READ
 
         if (alarmEnabled == FALSE)
         {
@@ -374,6 +373,7 @@ int llwrite(const unsigned char *buf, int bufSize)
                 }
                 else{
                     alarm(0);
+                    alarmEnabled=FALSE;
                     done=TRUE;
                 }
                 break;
@@ -394,7 +394,6 @@ int llread(unsigned char *packet)
     StateEnum state = START;
     int running = TRUE;
     int esc_activated = FALSE;
-    unsigned char data[MAX_PAYLOAD_SIZE] = {0};
     int data_size = 0;
     unsigned char bcc2 = 0;
     while (running)
@@ -451,8 +450,8 @@ int llread(unsigned char *packet)
             case BCC_OK:
                 if(received[0] == FLAG){
                     //printf("\nbcc1=0x%02X, unsigned char: %c\n", (unsigned int)(data[data_size-1] & 0xFF), data[data_size]);
-                    if (data[data_size-1] == (bcc2^data[data_size-1])){
-                        data[data_size-1] = 0;
+                    if (packet[data_size-1] == (bcc2^packet[data_size-1])){
+                        packet[data_size-1] = 0;
                         data_size--;
                         running = FALSE;
                         unsigned char ack[]={FLAG,A,CRR,(A^CRR),FLAG};
@@ -481,13 +480,13 @@ int llread(unsigned char *packet)
                     }    
                     if (esc_activated){
                         if (received[0] == 0x5E){
-                            data[data_size] = FLAG;
+                            packet[data_size] = FLAG;
                             data_size++;
                             bcc2 ^= ESC;
                             bcc2 ^= 0x5E;
                         }
                         if (received[0] == 0x5D){
-                            data[data_size] = ESC;
+                            packet[data_size] = ESC;
                             data_size ++;
                             bcc2 ^= ESC;
                             bcc2 ^= 0x5D;
@@ -495,7 +494,7 @@ int llread(unsigned char *packet)
                         esc_activated=FALSE;
                     }
                     else{
-                        data[data_size] = received[0];
+                        packet[data_size] = received[0];
                         data_size ++;
                         bcc2 ^= received[0];
                     }
@@ -508,9 +507,6 @@ int llread(unsigned char *packet)
 
 
     }
-    packet=data;
-    for (int k = 0; k < data_size; k++){
-        printf("var=0x%02X, unsigned char: %c\n", (unsigned int)(packet[k] & 0xFF), packet[k]);}
     return data_size;
 }
 
