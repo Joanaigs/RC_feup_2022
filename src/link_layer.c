@@ -18,12 +18,15 @@
 #define FLAG 0x7E
 #define CSET 0x03
 #define CUA 0x07
-#define CRR 0x05
-#define CREJ 0x01
+#define C0 0x00
+#define C1 0x40
+#define CRR0 0x05
+#define CRR1 0x85
+#define CREJ0 0x01
+#define CREJ1 0x81
 #define A 0x03
 #define ESC 0x7D
-#define BCC1 A^CSET
-#define BCC2 A^CUA
+
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
@@ -36,7 +39,7 @@ typedef enum {
     BCC_OK
 } StateEnum;
 
-clock_t start,end;
+clock_t start, end;
 struct termios oldtio;
 volatile int STOP = FALSE;
 int alarmEnabled = FALSE;
@@ -45,6 +48,8 @@ int fd;
 int nTries = 0;
 int timeout = 0;
 double time_elapsed = 0;
+int ns = 0;
+int nr = 1;
 
 void alarmHandler(int signal) {
     alarmEnabled = FALSE;
@@ -268,8 +273,13 @@ int llwrite(const unsigned char *buf, int bufSize) {
     // write info;
     i[0] = FLAG;
     i[1] = A;
-    i[2] = CSET;
-    i[3] = A ^ CSET;
+    if (ns == 0) {
+        i[2] = C0;
+        i[3] = A ^ C0;
+    } else if (ns == 1) {
+        i[2] = C1;
+        i[3] = A ^ C1;
+    }
     unsigned int bcc2 = 0, k = 0;
     for (int j = 0; j < bufSize; j++) {
         if (buf[j] == FLAG) {
@@ -335,10 +345,10 @@ int llwrite(const unsigned char *buf, int bufSize) {
             case A_RCV:
                 if (received[0] == FLAG) {
                     state = FLAG_RCV;
-                } else if (received[0] == CRR) {
+                } else if (received[0] == CRR0 || received[0] == CRR1) {
                     c = received[0];
                     state = C_RCV;
-                } else if (received[0] == CREJ) {
+                } else if (received[0] == CREJ0 || received[0] == CREJ1) {
                     if (write(fd, i, size) == -1) {
                         printf("writing error\n");
                         return -1;
@@ -367,7 +377,12 @@ int llwrite(const unsigned char *buf, int bufSize) {
         }
 
     }
-
+    if (ns == 0)
+        ns = 1;
+    else if (ns == 1)
+        ns = 0;
+    alarm(0);
+    alarmEnabled = FALSE;
     return size;
 }
 
@@ -409,11 +424,11 @@ int llread(unsigned char *packet) {
             case A_RCV:
                 if (received[0] == FLAG) {
                     state = FLAG_RCV;
-                } else if (received[0] != CSET) {
-                    state = START;
-                } else {
+                } else if (received[0] == C0 || received[0] == C1) {
                     c = received[0];
                     state = C_RCV;
+                } else {
+                    state = START;
                 }
                 break;
             case C_RCV:
@@ -432,7 +447,17 @@ int llread(unsigned char *packet) {
                         packet[data_size - 1] = 0;
                         data_size--;
                         running = FALSE;
-                        unsigned char ack[] = {FLAG, A, CRR, (A ^ CRR), FLAG};
+                        unsigned char ack[5] = {0};
+                        ack[0] = FLAG;
+                        ack[1] = A;
+                        ack[4] = FLAG;
+                        if (nr == 0) {
+                            ack[2] = CRR0;
+                            ack[3] = A ^ CRR0;
+                        } else if (nr == 1) {
+                            ack[2] = CRR0;
+                            ack[3] = A ^ CRR0;
+                        }
                         if (write(fd, ack, 5) == -1) {
                             printf("writing error\n");
                             return -1;
@@ -442,7 +467,17 @@ int llread(unsigned char *packet) {
                         state = START;
                         data_size = 0;
                         bcc2 = 0;
-                        unsigned char nack[] = {FLAG, A, CREJ, (A ^ CREJ), FLAG};
+                        unsigned char nack[5] = {0};
+                        nack[0] = FLAG;
+                        nack[1] = A;
+                        nack[4] = FLAG;
+                        if (nr == 0) {
+                            nack[2] = CREJ0;
+                            nack[3] = A ^ CREJ0;
+                        } else if (nr == 1) {
+                            nack[2] = CREJ1;
+                            nack[3] = A ^ CREJ1;
+                        }
                         if (write(fd, nack, 5) == -1) {
                             printf("writing error\n");
                             return -1;
@@ -450,7 +485,17 @@ int llread(unsigned char *packet) {
                     }
                 } else {
                     if (data_size >= MAX_PAYLOAD_SIZE) {
-                        unsigned char nack[] = {FLAG, A, CREJ, (A ^ CREJ), FLAG};
+                        unsigned char nack[5] = {0};
+                        nack[0] = FLAG;
+                        nack[1] = A;
+                        nack[4] = FLAG;
+                        if (nr == 0) {
+                            nack[2] = CREJ0;
+                            nack[3] = A ^ CREJ0;
+                        } else if (nr == 1) {
+                            nack[2] = CREJ1;
+                            nack[3] = A ^ CREJ1;
+                        }
                         data_size = 0;
                         if (write(fd, nack, 5) == -1) {
                             printf("writing error\n");
@@ -491,6 +536,11 @@ int llread(unsigned char *packet) {
 
 
     }
+    if (nr == 0)
+        nr = 1;
+    else if (nr == 1)
+        nr = 0;
+
     return data_size;
 }
 
@@ -505,7 +555,7 @@ int llclose(int showStatistics) {
         exit(-1);
     }
 
-    if (showStatistics == 1){
+    if (showStatistics == 1) {
         printf("Time Spent: %f seconds\n", time_elapsed);
     }
 
