@@ -174,12 +174,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
                         }
                     }
-                    if(fileLength!=fileLength2){
+                    if (fileLength != fileLength2) {
                         printf("Start info and ending info don't match.\n");
                         return;
                     }
-                    for(int i=0; i< fileLength; i++){
-                        if(fileSize[i]!=fileSize2[i]){
+                    for (int i = 0; i < fileLength; i++) {
+                        if (fileSize[i] != fileSize2[i]) {
                             printf("Start info and ending info don't match.\n");
                             return;
                         }
@@ -190,12 +190,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                             name2[i] = info[i + 5 + fileLength2];
                         }
                     }
-                    if(nameSize!=nameSize2){
+                    if (nameSize != nameSize2) {
                         printf("Start info and ending info don't match.\n");
                         return;
                     }
-                    for(int i=0; i< nameSize; i++){
-                        if(name[i]!=name2[i]){
+                    for (int i = 0; i < nameSize; i++) {
+                        if (name[i] != name2[i]) {
                             printf("Start info and ending info don't match.\n");
                             return;
                         }
