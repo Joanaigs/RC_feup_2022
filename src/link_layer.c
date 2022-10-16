@@ -8,6 +8,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <signal.h>
+#include <time.h>
 #include "link_layer.h"
 
 #define FALSE 0
@@ -35,6 +36,7 @@ typedef enum {
     BCC_OK
 } StateEnum;
 
+clock_t start,end;
 struct termios oldtio;
 volatile int STOP = FALSE;
 int alarmEnabled = FALSE;
@@ -42,6 +44,7 @@ int alarmCount = 0;
 int fd;
 int nTries = 0;
 int timeout = 0;
+double time_elapsed = 0;
 
 void alarmHandler(int signal) {
     alarmEnabled = FALSE;
@@ -52,6 +55,9 @@ void alarmHandler(int signal) {
 
 
 int llopen(LinkLayer connectionParameters) {
+
+    start = clock();
+
     fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
 
     if (fd < 0) {
@@ -492,9 +498,15 @@ int llread(unsigned char *packet) {
 // LLCLOSE
 ////////////////////////////////////////////////
 int llclose(int showStatistics) {
+    end = clock();
+    time_elapsed = ((double) (end - start)) / CLOCKS_PER_SEC;
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1) {
         perror("tcsetattr");
         exit(-1);
+    }
+
+    if (showStatistics == 1){
+        printf("Time Spent: %f seconds\n", time_elapsed);
     }
 
     close(fd);

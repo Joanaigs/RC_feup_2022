@@ -163,8 +163,44 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                     printf("Error reading control/data packet.\n");
                 }
                 if (info[0] == 3) {
+                    unsigned char name2[MAX_SIZE] = {0};
+                    unsigned char nameSize2;
+                    unsigned char fileLength2;
+                    unsigned char fileSize2[MAX_SIZE];
+                    if (info[1] == 0) {
+                        fileLength2 = info[2];
+                        for (int i = 0; i < fileLength2; i++) {
+                            fileSize2[i] = info[i + 3];
+
+                        }
+                    }
+                    if(fileLength!=fileLength2){
+                        printf("Start info and ending info don't match.\n");
+                        return;
+                    }
+                    for(int i=0; i< fileLength; i++){
+                        if(fileSize[i]!=fileSize2[i]){
+                            printf("Start info and ending info don't match.\n");
+                            return;
+                        }
+                    }
+                    if (info[3 + fileLength2] == 1) {
+                        nameSize2 = info[4 + fileLength2];
+                        for (int i = 0; i < nameSize2; i++) {
+                            name2[i] = info[i + 5 + fileLength2];
+                        }
+                    }
+                    if(nameSize!=nameSize2){
+                        printf("Start info and ending info don't match.\n");
+                        return;
+                    }
+                    for(int i=0; i< nameSize; i++){
+                        if(name[i]!=name2[i]){
+                            printf("Start info and ending info don't match.\n");
+                            return;
+                        }
+                    }
                     break;
-                    //...
                 }
                 unsigned char n = info[1];
                 if (count != n) {
@@ -184,7 +220,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
 
     }
-    if (llclose(FALSE) == -1) {
+    if (llclose(TRUE) == -1) {
         printf("error in llclose\n");
     }
 
