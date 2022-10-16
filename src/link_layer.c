@@ -455,8 +455,8 @@ int llread(unsigned char *packet) {
                             ack[2] = CRR0;
                             ack[3] = A ^ CRR0;
                         } else if (nr == 1) {
-                            ack[2] = CRR0;
-                            ack[3] = A ^ CRR0;
+                            ack[2] = CRR1;
+                            ack[3] = A ^ CRR1;
                         }
                         if (write(fd, ack, 5) == -1) {
                             printf("writing error\n");
