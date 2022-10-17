@@ -87,29 +87,27 @@ int llopen(LinkLayer connectionParameters) {
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
 
-    // Set input mode (non-canonical, no echo,...)
-    newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0.1; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received[0]
-
-    // VTIME e VMIN should be changed in order to protect with a
-    // timeout the reception of the following character(s)
-
-    // Now clean the line and activate the settings for the port
-    // tcflush() discards data written to the object referred to
-    // by fd but not transmitted, or data received[0] but not read,
-    // depending on the value of queue_selector:
-    //   TCIFLUSH - flushes data received[0] but not read.
-    tcflush(fd, TCIOFLUSH);
-
-    // Set new port settings
-    if (tcsetattr(fd, TCSANOW, &newtio) == -1) {
-        perror("tcsetattr");
-        exit(-1);
-    }
-
-    printf("New termios structure sett\n");
+    
     if (connectionParameters.role == LlTx) {
+        newtio.c_lflag = 0;
+        newtio.c_cc[VTIME] = 0.1; // Inter-character timer unused
+        newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received[0]
+
+        // VTIME e VMIN should be changed in order to protect with a
+        // timeout the reception of the following character(s)
+
+        // Now clean the line and activate the settings for the port
+        // tcflush() discards data written to the object referred to
+        // by fd but not transmitted, or data received[0] but not read,
+        // depending on the value of queue_selector:
+        //   TCIFLUSH - flushes data received[0] but not read.
+        tcflush(fd, TCIOFLUSH);
+
+        // Set new port settings
+        if (tcsetattr(fd, TCSANOW, &newtio) == -1) {
+            perror("tcsetattr");
+            exit(-1);
+        }
         unsigned char set[] = {FLAG, A, CSET, (A ^ CSET), FLAG};
         int done = FALSE;
         (void) signal(SIGALRM, alarmHandler);
@@ -119,7 +117,7 @@ int llopen(LinkLayer connectionParameters) {
             if (alarmEnabled == FALSE) {
                 state = START;
                 if (write(fd, set, 5) == -1) {
-                    printf("writing error\n");
+                    printf("error writing\n");
                     return -1;
                 }
                 alarm(timeout); // Set alarm to be triggered in 3s
@@ -128,7 +126,7 @@ int llopen(LinkLayer connectionParameters) {
             unsigned char received[1];
             int bytes = read(fd, received, 1);
             if (bytes == -1) {
-                printf("reading error in llopen\n");
+                printf("error reading in llopen\n");
                 return -1;
             }
             if (bytes == 0)
@@ -180,8 +178,27 @@ int llopen(LinkLayer connectionParameters) {
         }
         alarm(0);
         alarmEnabled = FALSE;
-        printf("Ending program\n");
+        
     } else if (connectionParameters.role == LlRx) {
+        newtio.c_lflag = 0;
+        newtio.c_cc[VTIME] = 0; // Inter-character timer unused
+        newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received[0]
+
+        // VTIME e VMIN should be changed in order to protect with a
+        // timeout the reception of the following character(s)
+
+        // Now clean the line and activate the settings for the port
+        // tcflush() discards data written to the object referred to
+        // by fd but not transmitted, or data received[0] but not read,
+        // depending on the value of queue_selector:
+        //   TCIFLUSH - flushes data received[0] but not read.
+        tcflush(fd, TCIOFLUSH);
+
+        // Set new port settings
+        if (tcsetattr(fd, TCSANOW, &newtio) == -1) {
+            perror("tcsetattr");
+            exit(-1);
+        }
         unsigned char set[5] = {0};
         StateEnum state = START;
         int running = 1;
@@ -189,7 +206,7 @@ int llopen(LinkLayer connectionParameters) {
             unsigned char received[1];
             int bytes = read(fd, received, 1);
             if (bytes == -1) {
-                printf("reading error in llopen2\n");
+                printf("error reading in llopen2\n");
                 return -1;
             }
             //printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
@@ -241,7 +258,7 @@ int llopen(LinkLayer connectionParameters) {
         }
         unsigned char ua[] = {FLAG, A, CUA, (A ^ CUA), FLAG};
         if (write(fd, ua, 5) == -1) {
-            printf("writing error\n");
+            printf("error writing\n");
             return -1;
         }
     }
@@ -312,7 +329,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
         if (alarmEnabled == FALSE) {
             state = START;
             if (write(fd, i, size) == -1) {
-                printf("writing error\n");
+                printf("error writing\n");
                 return -1;
             }
             alarm(timeout); // Set alarm to be triggered in 3s
@@ -321,7 +338,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
         unsigned char received[1];
         int bytes = read(fd, received, 1);
         if (bytes == -1) {
-            printf("reading error in llwrite\n");
+            printf("error reading in llwrite\n");
             return -1;
         }
         //printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
@@ -350,7 +367,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
                     state = C_RCV;
                 } else if (received[0] == CREJ0 || received[0] == CREJ1) {
                     if (write(fd, i, size) == -1) {
-                        printf("writing error\n");
+                        printf("error writing\n");
                         return -1;
                     }
                     state = START;
@@ -400,7 +417,7 @@ int llread(unsigned char *packet) {
         unsigned char received[1];
         int byte = read(fd, received, 1);
         if (byte == -1) {
-            printf("Reading error in llread\n");
+            printf("error reading in llread\n");
             return -1;
         }
         //printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF)); // print do que recebe
@@ -459,7 +476,7 @@ int llread(unsigned char *packet) {
                             ack[3] = A ^ CRR1;
                         }
                         if (write(fd, ack, 5) == -1) {
-                            printf("writing error\n");
+                            printf("error writing\n");
                             return -1;
                         }
 
@@ -479,7 +496,7 @@ int llread(unsigned char *packet) {
                             nack[3] = A ^ CREJ1;
                         }
                         if (write(fd, nack, 5) == -1) {
-                            printf("writing error\n");
+                            printf("error writing\n");
                             return -1;
                         }
                     }
@@ -498,7 +515,7 @@ int llread(unsigned char *packet) {
                         }
                         data_size = 0;
                         if (write(fd, nack, 5) == -1) {
-                            printf("writing error\n");
+                            printf("error writing\n");
                             return -1;
                         }
                         state = START;
