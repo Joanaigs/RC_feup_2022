@@ -394,6 +394,11 @@ int llwrite(const unsigned char *buf, int bufSize) {
         }
 
     }
+    if(!done){
+        printf("alarm count reached\n");
+        return -1;
+    }
+        
     if (ns == 0)
         ns = 1;
     else if (ns == 1)
