@@ -30,15 +30,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     llayer.timeout = timeout;
     llayer.baudRate = baudRate;
     llayer.nRetransmissions = nTries;
-    printf("%s\n", role);
-    printf("%d\n", llayer.role);
     llopen(llayer);
 
     if (llayer.role == LlTx) {
-        /*unsigned char buf[10] = {0};
-        printf("Enter a string : ");
-        gets(buf);
-        llwrite(buf, 10);*/
+      
+        printf("Sending data...\n");
 
         // calculating the size of the file
         struct stat st;
@@ -100,7 +96,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             } else {
                 unsigned char buffer[fileSize];
                 if (!fread(buffer, fileSize, 1, file)) {
-                    printf("osld");
+                    printf("error reading file\n");
                     break;
                 }
 
@@ -128,6 +124,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             return;
         }
 
+        printf("File sent!\n");
+
     } else if (llayer.role == LlRx) {
         FILE *file;
         file = fopen(filename, "wb");
@@ -137,6 +135,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         unsigned char fileLength;
         unsigned char fileSize[MAX_SIZE];
         int count = 0;
+        printf("Receiving data...\n");
         int size = llread(buf);
         if (size == -1) {
             printf("Error reading start control packet.\n");
@@ -218,8 +217,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             }
         }
 
+        printf("File received! \n");
+
 
     }
+
+    
     if (llclose(TRUE) == -1) {
         printf("error in llclose\n");
     }
