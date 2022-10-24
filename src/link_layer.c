@@ -48,7 +48,6 @@ int alarmCount = 0;
 int fd;
 int nTries = 0;
 int timeout = 0;
-double time_elapsed = 0;
 int ns = 0;
 int nr = 1;
 LinkLayerRole role;
@@ -180,6 +179,7 @@ int llopen(LinkLayer connectionParameters) {
         }
         alarm(0);
         alarmEnabled = FALSE;
+        alarmCount=0;
         
     } else if (connectionParameters.role == LlRx) {
         newtio.c_lflag = 0;
@@ -442,6 +442,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
         ns = 0;
     alarm(0);
     alarmEnabled = FALSE;
+    alarmCount=0;
     return size;
 }
 
@@ -812,7 +813,7 @@ int llclose(int showStatistics) {
 
 
     end = clock();
-    time_elapsed = ((double) (end - start)) / CLOCKS_PER_SEC;
+    double time_elapsed = ((double) (end - start)) / CLOCKS_PER_SEC;
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1) {
         perror("tcsetattr");
         exit(-1);
