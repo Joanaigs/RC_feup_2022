@@ -689,7 +689,7 @@ int llclose(int showStatistics) {
             }
             if (bytes == 0)
                 continue;
-            //printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+            printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
 
             switch (state) {
                 case START:
@@ -754,7 +754,7 @@ int llclose(int showStatistics) {
                 printf("error reading in llopen2\n");
                 return -1;
             }
-            //printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+            printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
             switch (state) {
                 case START:
                     if (received[0] == FLAG) {
@@ -806,7 +806,60 @@ int llclose(int showStatistics) {
             printf("error writing\n");
             return -1;
         }
-
+        while (running) {
+            unsigned char received[1];
+            int bytes = read(fd, received, 1);
+            if (bytes == -1) {
+                printf("error reading in llopen2\n");
+                return -1;
+            }
+            printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+            switch (state) {
+                case START:
+                    if (received[0] == FLAG) {
+                        set[0] = received[0];
+                        state = FLAG_RCV;
+                    }
+                    break;
+                case FLAG_RCV:
+                    if (received[0] == FLAG)
+                        continue;
+                    else if (received[0] != A) {
+                        state = START;
+                    } else {
+                        set[1] = received[0];
+                        state = A_RCV;
+                    }
+                    break;
+                case A_RCV:
+                    if (received[0] == FLAG) {
+                        state = FLAG_RCV;
+                        set[0] = received[0];
+                    } else if (received[0] != CUA) {
+                        state = START;
+                    } else {
+                        set[2] = received[0];
+                        state = C_RCV;
+                    }
+                    break;
+                case C_RCV:
+                    if (received[0] != (set[1] ^ set[2])) {
+                        state = START;
+                    } else {
+                        set[3] = received[0];
+                        state = BCC_OK;
+                    }
+                    break;
+                case BCC_OK:
+                    if (received[0] != FLAG) {
+                        state = START;
+                    } else {
+                        set[4] = received[0];
+                        running = 0;
+                    }
+                    break;
+            }
+        }
 
     }
 
