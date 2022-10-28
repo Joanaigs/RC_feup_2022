@@ -20,6 +20,7 @@
 #define CUA 0x07
 #define C0 0x00
 #define C1 0x40
+#define CDISC 0x0B
 #define CRR0 0x05
 #define CRR1 0x85
 #define CREJ0 0x01
@@ -47,9 +48,9 @@ int alarmCount = 0;
 int fd;
 int nTries = 0;
 int timeout = 0;
-double time_elapsed = 0;
 int ns = 0;
 int nr = 1;
+LinkLayerRole role;
 
 void alarmHandler(int signal) {
     alarmEnabled = FALSE;
@@ -60,7 +61,7 @@ void alarmHandler(int signal) {
 
 
 int llopen(LinkLayer connectionParameters) {
-
+    role= connectionParameters.role;
     start = clock();
 
     fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
@@ -178,6 +179,7 @@ int llopen(LinkLayer connectionParameters) {
         }
         alarm(0);
         alarmEnabled = FALSE;
+        alarmCount=0;
         
     } else if (connectionParameters.role == LlRx) {
         newtio.c_lflag = 0;
@@ -282,7 +284,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
         }
     }
 
-    unsigned int size = bufSize + 6 + count;
+    unsigned int size = bufSize + 6 + count + 1;
     unsigned char i[size];
     for (int k = 0; k < size; k++) {
         i[k] = 0;
@@ -319,10 +321,26 @@ int llwrite(const unsigned char *buf, int bufSize) {
         }
 
     }
-    i[size - 1] = FLAG;
-    i[size - 2] = bcc2;
+    if(bcc2==FLAG){
+        i[size - 1] = FLAG;
+        i[size - 2] = 0x5E;
+        i[size - 3] = ESC;
+    } else if(bcc2 == ESC){
+        i[size - 1] = FLAG;
+        i[size - 2] = 0x5D;
+        i[size - 3] = ESC;
+    }else{
+        size--;
+        i[size - 1]= FLAG;
+        i[size - 2] = bcc2;
+    }
 
-
+    /*
+    for (int l = 0; l < size; l++) {
+        printf("aa=0x%02X, unsigned char: %c\n", (unsigned int)(i[l] & 0xFF), i[l]);
+    }
+    printf("size: %d\n", count);
+    printf("size: %d\n", size);*/
     while (alarmCount < nTries && !done) {
 
 
@@ -362,9 +380,28 @@ int llwrite(const unsigned char *buf, int bufSize) {
             case A_RCV:
                 if (received[0] == FLAG) {
                     state = FLAG_RCV;
-                } else if (received[0] == CRR0 || received[0] == CRR1) {
-                    c = received[0];
-                    state = C_RCV;
+                } else if (received[0] == CRR0){
+                    if(ns==0){
+                        if (write(fd, i, size) == -1) {
+                            printf("error writing\n");
+                            return -1;
+                        }
+                        state=START;
+                    }else {
+                        c = received[0];
+                        state = C_RCV;
+                    }
+                } else if (received[0] == CRR1) {
+                    if(ns==1){
+                        if (write(fd, i, size) == -1) {
+                            printf("error writing\n");
+                            return -1;
+                        }
+                        state=START;
+                    }else {
+                        c = received[0];
+                        state = C_RCV;
+                    }
                 } else if (received[0] == CREJ0 || received[0] == CREJ1) {
                     if (write(fd, i, size) == -1) {
                         printf("error writing\n");
@@ -405,6 +442,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
         ns = 0;
     alarm(0);
     alarmEnabled = FALSE;
+    alarmCount=0;
     return size;
 }
 
@@ -425,11 +463,11 @@ int llread(unsigned char *packet) {
             printf("error reading in llread\n");
             return -1;
         }
-        //printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF)); // print do que recebe
         unsigned char a, c;
         switch (state) {
             case START:
                 if (received[0] == FLAG) {
+                    //printf("flag=0x%02Xunsigned char: %c\n", (unsigned int)(received[0] & 0xFF), received[0]); // print do que recebe
                     state = FLAG_RCV;
                 }
                 break;
@@ -439,6 +477,7 @@ int llread(unsigned char *packet) {
                 else if (received[0] != A) {
                     state = START;
                 } else {
+                    //printf("a=0x%02Xunsigned char: %c\n", (unsigned int)(received[0] & 0xFF), received[0]); // print do que recebe
                     a = received[0];
                     state = A_RCV;
                 }
@@ -446,9 +485,51 @@ int llread(unsigned char *packet) {
             case A_RCV:
                 if (received[0] == FLAG) {
                     state = FLAG_RCV;
-                } else if (received[0] == C0 || received[0] == C1) {
-                    c = received[0];
-                    state = C_RCV;
+                } else if (received[0] == C0){
+                    if(nr==0){
+                        unsigned char ack[5] = {0};
+                        ack[0] = FLAG;
+                        ack[1] = A;
+                        ack[4] = FLAG;
+                        if (nr == 0) {
+                            ack[2] = CRR0;
+                            ack[3] = A ^ CRR0;
+                        } else if (nr == 1) {
+                            ack[2] = CRR1;
+                            ack[3] = A ^ CRR1;
+                        }
+                        if (write(fd, ack, 5) == -1) {
+                            printf("error writing\n");
+                            return -1;
+                        }
+                        state=START;
+                    }else {
+                        c = received[0];
+                        state = C_RCV;
+                    }
+
+                } else if (received[0] == C1) {
+                    if(nr==1){
+                        unsigned char ack[5] = {0};
+                        ack[0] = FLAG;
+                        ack[1] = A;
+                        ack[4] = FLAG;
+                        if (nr == 0) {
+                            ack[2] = CRR0;
+                            ack[3] = A ^ CRR0;
+                        } else if (nr == 1) {
+                            ack[2] = CRR1;
+                            ack[3] = A ^ CRR1;
+                        }
+                        if (write(fd, ack, 5) == -1) {
+                            printf("error writing\n");
+                            return -1;
+                        }
+                        state=START;
+                    }else {
+                        c = received[0];
+                        state = C_RCV;
+                    }
                 } else {
                     state = START;
                 }
@@ -459,13 +540,23 @@ int llread(unsigned char *packet) {
                 } else if (received[0] != (a ^ c)) {
                     state = START;
                 } else {
+                    //printf("bcc=0x%02Xunsigned char: %c\n", (unsigned int)(received[0] & 0xFF), received[0]); // print do que recebe
                     state = BCC_OK;
                 }
                 break;
             case BCC_OK:
                 if (received[0] == FLAG) {
-                    //printf("\nbcc1=0x%02X, unsigned char: %c\n", (unsigned int)(data[data_size-1] & 0xFF), data[data_size]);
-                    if (packet[data_size - 1] == (bcc2 ^ packet[data_size - 1])) {
+                    //printf("\nbcc1=0x%02X, unsigned char: %c\n", (unsigned int)(packet[data_size-1] & 0xFF), packet[data_size]);
+                    if(packet[data_size - 1] == ESC){
+                        bcc2=bcc2^ESC^0x5D;
+                    }
+                    else if(packet[data_size - 1] == FLAG){
+                        bcc2=bcc2^ESC^0x5E;
+                    }
+                    else{
+                        bcc2 ^= packet[data_size - 1];
+                    }
+                    if (packet[data_size - 1] == (bcc2)) {
                         packet[data_size - 1] = 0;
                         data_size--;
                         running = FALSE;
@@ -506,7 +597,8 @@ int llread(unsigned char *packet) {
                         }
                     }
                 } else {
-                    if (data_size >= MAX_PAYLOAD_SIZE) {
+                    if (data_size >= MAX_PAYLOAD_SIZE + 1) {
+                        printf("fuck=0x%02Xunsigned char: %c\n", (unsigned int)(received[0] & 0xFF), received[0]); // print do que recebe
                         unsigned char nack[5] = {0};
                         nack[0] = FLAG;
                         nack[1] = A;
@@ -525,6 +617,7 @@ int llread(unsigned char *packet) {
                         }
                         state = START;
                         bcc2 = 0;
+                        continue;
                     }
                     if (received[0] == ESC) {
                         esc_activated = TRUE;
@@ -545,6 +638,7 @@ int llread(unsigned char *packet) {
                         }
                         esc_activated = FALSE;
                     } else {
+                        //printf("get=0x%02Xunsigned char: %c\n", (unsigned int)(received[0] & 0xFF), received[0]); // print do que recebe
                         packet[data_size] = received[0];
                         data_size++;
                         bcc2 ^= received[0];
@@ -570,8 +664,209 @@ int llread(unsigned char *packet) {
 // LLCLOSE
 ////////////////////////////////////////////////
 int llclose(int showStatistics) {
+    if (role == LlTx) {
+
+        unsigned char disc[] = {FLAG, A, CDISC, (A ^ CDISC), FLAG};
+        int done = FALSE;
+        (void) signal(SIGALRM, alarmHandler);
+        unsigned char a, c;
+        StateEnum state = START;
+        while (alarmCount < nTries && !done) {
+            if (alarmEnabled == FALSE) {
+                state = START;
+                if (write(fd, disc, 5) == -1) {
+                    printf("error writing\n");
+                    return -1;
+                }
+                alarm(timeout); // Set alarm to be triggered in 3s
+                alarmEnabled = TRUE;
+            }
+            unsigned char received[1];
+            int bytes = read(fd, received, 1);
+            if (bytes == -1) {
+                printf("error reading in llopen\n");
+                return -1;
+            }
+            if (bytes == 0)
+                continue;
+            printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+
+            switch (state) {
+                case START:
+                    if (received[0] == FLAG) {
+                        state = FLAG_RCV;
+                    }
+                    break;
+                case FLAG_RCV:
+                    if (received[0] == FLAG)
+                        continue;
+                    else if (received[0] != A) {
+                        state = START;
+                    } else {
+                        a = received[0];
+                        state = A_RCV;
+                    }
+                    break;
+                case A_RCV:
+                    if (received[0] == FLAG) {
+                        state = FLAG_RCV;
+                    } else if (received[0] != CDISC) {
+                        state = START;
+                    } else {
+                        c = received[0];
+                        state = C_RCV;
+                    }
+                    break;
+                case C_RCV:
+                    if (received[0] != (a ^ c)) {
+                        state = START;
+                    } else {
+                        state = BCC_OK;
+                    }
+                    break;
+                case BCC_OK:
+                    if (received[0] != FLAG) {
+                        state = START;
+                    } else {
+                        done = TRUE;
+                    }
+                    break;
+            }
+
+        }
+        alarm(0);
+        alarmEnabled = FALSE;
+        unsigned char ua[] = {FLAG, A, CUA, (A ^ CUA), FLAG};
+        if (write(fd, ua, 5) == -1) {
+            printf("error writing\n");
+            return -1;
+        }
+
+    } else if (role == LlRx) {
+
+        unsigned char set[5] = {0};
+        StateEnum state = START;
+        int running = 1;
+        while (running) {
+            unsigned char received[1];
+            int bytes = read(fd, received, 1);
+            if (bytes == -1) {
+                printf("error reading in llopen2\n");
+                return -1;
+            }
+            printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+            switch (state) {
+                case START:
+                    if (received[0] == FLAG) {
+                        set[0] = received[0];
+                        state = FLAG_RCV;
+                    }
+                    break;
+                case FLAG_RCV:
+                    if (received[0] == FLAG)
+                        continue;
+                    else if (received[0] != A) {
+                        state = START;
+                    } else {
+                        set[1] = received[0];
+                        state = A_RCV;
+                    }
+                    break;
+                case A_RCV:
+                    if (received[0] == FLAG) {
+                        state = FLAG_RCV;
+                        set[0] = received[0];
+                    } else if (received[0] != CDISC) {
+                        state = START;
+                    } else {
+                        set[2] = received[0];
+                        state = C_RCV;
+                    }
+                    break;
+                case C_RCV:
+                    if (received[0] != (set[1] ^ set[2])) {
+                        state = START;
+                    } else {
+                        set[3] = received[0];
+                        state = BCC_OK;
+                    }
+                    break;
+                case BCC_OK:
+                    if (received[0] != FLAG) {
+                        state = START;
+                    } else {
+                        set[4] = received[0];
+                        running = 0;
+                    }
+                    break;
+            }
+        }
+        unsigned char disc[] = {FLAG, A, CDISC, (A ^ CDISC), FLAG};
+        if (write(fd, disc, 5) == -1) {
+            printf("error writing\n");
+            return -1;
+        }
+        while (running) {
+            unsigned char received[1];
+            int bytes = read(fd, received, 1);
+            if (bytes == -1) {
+                printf("error reading in llopen2\n");
+                return -1;
+            }
+            printf("var=0x%02X\n", (unsigned int)(received[0] & 0xFF));
+            switch (state) {
+                case START:
+                    if (received[0] == FLAG) {
+                        set[0] = received[0];
+                        state = FLAG_RCV;
+                    }
+                    break;
+                case FLAG_RCV:
+                    if (received[0] == FLAG)
+                        continue;
+                    else if (received[0] != A) {
+                        state = START;
+                    } else {
+                        set[1] = received[0];
+                        state = A_RCV;
+                    }
+                    break;
+                case A_RCV:
+                    if (received[0] == FLAG) {
+                        state = FLAG_RCV;
+                        set[0] = received[0];
+                    } else if (received[0] != CUA) {
+                        state = START;
+                    } else {
+                        set[2] = received[0];
+                        state = C_RCV;
+                    }
+                    break;
+                case C_RCV:
+                    if (received[0] != (set[1] ^ set[2])) {
+                        state = START;
+                    } else {
+                        set[3] = received[0];
+                        state = BCC_OK;
+                    }
+                    break;
+                case BCC_OK:
+                    if (received[0] != FLAG) {
+                        state = START;
+                    } else {
+                        set[4] = received[0];
+                        running = 0;
+                    }
+                    break;
+            }
+        }
+
+    }
+
+
+
     end = clock();
-    time_elapsed = ((double) (end - start)) / CLOCKS_PER_SEC;
+    double time_elapsed = ((double) (end - start)) / CLOCKS_PER_SEC;
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1) {
         perror("tcsetattr");
         exit(-1);

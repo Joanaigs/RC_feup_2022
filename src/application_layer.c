@@ -8,7 +8,6 @@
 #include <sys/stat.h>
 #include <limits.h>
 
-#define MAX_SIZE  500
 
 int numDigits(long n) {
     int count = 0;
@@ -73,21 +72,21 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             printf("file can't be opened \n");
         }
         int n = 0;
-        unsigned char dataPacket[MAX_SIZE] = {0};
+        unsigned char dataPacket[MAX_PAYLOAD_SIZE] = {0};
         dataPacket[0] = 1;
         while (TRUE) {
-            if (fileSize >= MAX_SIZE - 4) {
-                unsigned char buffer[MAX_SIZE - 4] = {0};
-                fread(buffer, MAX_SIZE - 4, 1, file);
-                fileSize = fileSize - (MAX_SIZE - 4);
+            if (fileSize >= MAX_PAYLOAD_SIZE - 4) {
+                unsigned char buffer[MAX_PAYLOAD_SIZE - 4] = {0};
+                fread(buffer, MAX_PAYLOAD_SIZE - 4, 1, file);
+                fileSize = fileSize - (MAX_PAYLOAD_SIZE - 4);
                 dataPacket[1] = n;
-                dataPacket[3] = (MAX_SIZE - 4) / 256;
-                dataPacket[2] = (MAX_SIZE - 4) % 256;
-                for (int i = 0; i < MAX_SIZE - 4; i++) {
+                dataPacket[3] = (MAX_PAYLOAD_SIZE - 4) / 256;
+                dataPacket[2] = (MAX_PAYLOAD_SIZE - 4) % 256;
+                for (int i = 0; i < MAX_PAYLOAD_SIZE - 4; i++) {
                     dataPacket[i + 4] = buffer[i];
                 }
                 n++;
-                if (llwrite(dataPacket, MAX_SIZE) == -1) {
+                if (llwrite(dataPacket, MAX_PAYLOAD_SIZE) == -1) {
                     printf("error in llwrite\n");
                     return;
                 }
@@ -129,11 +128,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     } else if (llayer.role == LlRx) {
         FILE *file;
         file = fopen(filename, "wb");
-        unsigned char buf[MAX_SIZE] = {0};
-        unsigned char name[MAX_SIZE] = {0};
+        unsigned char buf[MAX_PAYLOAD_SIZE] = {0};
+        unsigned char name[MAX_PAYLOAD_SIZE] = {0};
         unsigned char nameSize;
         unsigned char fileLength;
-        unsigned char fileSize[MAX_SIZE];
+        unsigned char fileSize[MAX_PAYLOAD_SIZE];
         int count = 0;
         printf("Receiving data...\n");
         int size = llread(buf);
@@ -155,17 +154,17 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 }
             }
             while (TRUE) {
-                unsigned char info[MAX_SIZE] = {0};
+                unsigned char info[MAX_PAYLOAD_SIZE] = {0};
                 size = llread(info);
 
                 if (size == -1) {
                     printf("Error reading control/data packet.\n");
                 }
                 if (info[0] == 3) {
-                    unsigned char name2[MAX_SIZE] = {0};
+                    unsigned char name2[MAX_PAYLOAD_SIZE] = {0};
                     unsigned char nameSize2;
                     unsigned char fileLength2;
-                    unsigned char fileSize2[MAX_SIZE];
+                    unsigned char fileSize2[MAX_PAYLOAD_SIZE];
                     if (info[1] == 0) {
                         fileLength2 = info[2];
                         for (int i = 0; i < fileLength2; i++) {
