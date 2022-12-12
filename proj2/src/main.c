@@ -282,6 +282,18 @@ int main(int argc, char *argv[]) {
     }
     bytes = readFile(response, SIZE);
 
+    char cmdQuit[5];
+    strcpy(cmdQuit, "quit");
+    strcat(cmdQuit, "\n");
+    printf("%s", cmdQuit);
+    size_t bytes2 = write(sockfd, cmdQuit, strlen(cmdQuit));
+    if (bytes2 < 0 || bytes2!=strlen(cmdQuit)){
+        perror("write()");
+        exit(-1);
+    }
+    char response2[SIZE];
+    bytes2 = readResult(response2, SIZE);
+
     if (close(sockfd2)<0) {
         perror("close()");
         exit(-1);
