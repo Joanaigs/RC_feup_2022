@@ -261,25 +261,6 @@ int main(int argc, char *argv[]) {
     if(login()<0)
         return -1;
 
-    /*
-    char cmdCWD[5+ strlen(filePath)];
-    strcpy(cmdCWD, "CWD ");
-    strcat(cmdCWD, pass);
-    strcat(cmdCWD, "\n");
-    printf("%s", cmdCWD);
-    size_t bytes = write(sockfd, cmdCWD, strlen(cmdCWD));
-    if (bytes < 0 || bytes!=strlen(cmdCWD)){
-        perror("write()");
-        exit(-1);
-    }
-    char response[SIZE];
-    bytes = readResult(response, SIZE);
-    if(response[0]!='2'){
-        printf("cwd error\n");
-        return -1;
-    }
-    */
-
     if(pasv()<0)
         return -1;
 
@@ -300,7 +281,29 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     bytes = readFile(response, SIZE);
+
+    char cmdQuit[5];
+    strcpy(cmdQuit, "quit");
+    strcat(cmdQuit, "\n");
+    printf("%s", cmdQuit);
+    size_t bytes2 = write(sockfd, cmdQuit, strlen(cmdQuit));
+    if (bytes2 < 0 || bytes2!=strlen(cmdQuit)){
+        perror("write()");
+        exit(-1);
+    }
+    char response2[SIZE];
+    bytes2 = readResult(response2, SIZE);
+
+    if (close(sockfd2)<0) {
+        perror("close()");
+        exit(-1);
+    }
+
     
+    if (close(sockfd)<0) {
+        perror("close()");
+        exit(-1);
+    }
 
     
 
